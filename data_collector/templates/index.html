@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Grid Object Categorization</title>
+  <style>
+    /* Global box sizing */
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 18px;
+      margin: 0;
+      padding: 0;
+      border-radius: 8px;
+    }
+    /* Container for all grid pairs displayed vertically */
+    .pairs-container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 10px;
+      align-items: center;
+    }
+    /* Each grid pair container occupies 50% of the viewport width */
+    .grid-pair {
+      display: flex;
+      flex-direction: row;
+      border: 1px solid #ccc;
+      background-color: #f9f9f9;
+      margin: 10px;
+      width: 90vw;
+      border-radius: 8px;
+      /* No overflow clipping here */
+    }
+    /* Left column: input/output images and object list; capped at 40vw */
+    .pair-images {
+      flex: 1;
+      padding: 10px;
+    }
+    /* Container for input and output images side by side */
+    .grid-images {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 10px;
+    }
+    .grid-image {
+      flex: 1;
+      text-align: center;
+      border-radius: 8px;
+      /* No overflow hidden here */
+    }
+    .grid-image img {
+      display: block;
+      margin: 5px auto;
+      border-radius: 8px;
+    }
+    /* Container for objects: header + scrollable object list */
+    .pair-objects {
+      border: 1px solid #ddd;
+      padding: 5px;
+      margin-top: 10px;
+      border-radius: 8px;
+    }
+    .pair-objects h3 {
+      margin: 5px 0;
+      font-size: 18px;
+    }
+    /* Object list container set to exactly the width of its parent */
+    .object-list {
+      display: flex;
+      flex-direction: row;
+      gap: 5px;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding: 5px;
+      align-items: flex-start;
+      width: 100%;
+    }
+    /* Object images: display at intrinsic dimensions */
+    .object-img {
+      border: 1px solid #000;
+      cursor: move;
+      border-radius: 8px;
+    }
+    /* Right column: category boxes arranged horizontally */
+    .category-boxes {
+      flex: 1;
+      padding: 10px;
+      border-left: 1px solid #ccc;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 10px;
+      border-radius: 8px;
+    }
+    /* Category box with a header and content area */
+    .category-box {
+      border: 2px dashed #aaa;
+      min-height: 100px;
+      width: 200px;
+      padding: 10px;
+      background-color: #fff;
+      display: flex;
+      flex-direction: column;
+      border-radius: 8px;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    /* Category header stays at the top */
+    .category-header {
+      font-weight: bold;
+      margin-bottom: 5px;
+      font-size: 18px;
+    }
+    /* Category content for dropped objects */
+    .category-content {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      border-radius: 8px;
+    }
+    /* Submit button styling and positioning */
+    #submitButton {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      font-size: 20px;
+      padding: 10px 20px;
+      background-color: #6B8E23; /* Matte green */
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <h1>Grid Object Categorization</h1>
+  <!-- Dropdown to select file -->
+  <form id="fileSelectForm" method="get" action="/">
+    <label for="filename">Select JSON File: </label>
+    <select name="filename" id="filename" onchange="this.form.submit()">
+      {% for file in available_files %}
+        <option value="{{ file }}" {% if file == chosen_filename %}selected{% endif %}>{{ file }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <!-- Submit button placed at the top right -->
+  <button type="button" id="submitButton" onclick="submitCategorization()">Submit</button>
+  <!-- Categorization Form -->
+  <form id="categorizationForm">
+    <!-- Hidden input to store chosen filename -->
+    <input type="hidden" id="selectedFilename" value="{{ chosen_filename }}">
+    <!-- Container for all grid pairs -->
+    <div class="pairs-container">
+      {% for pair in pairs %}
+      <div class="grid-pair" id="{{ pair.id }}">
+        <div class="pair-images">
+          <div class="grid-images">
+            <div class="grid-image">
+              <h3>Input Grid</h3>
+              <img src="{{ url_for('static', filename=pair.input_image.split('static/')[1]) }}" alt="Input Grid">
+            </div>
+            {% if pair.output_image %}
+            <div class="grid-image">
+              <h3>Output Grid</h3>
+              <img src="{{ url_for('static', filename=pair.output_image.split('static/')[1]) }}" alt="Output Grid">
+            </div>
+            {% endif %}
+          </div>
+          <div class="pair-objects">
+            <h3>Objects:</h3>
+            <div id="{{ pair.id }}-object-list" class="object-list" ondrop="dropToObjects(event, '{{ pair.id }}')" ondragover="allowDrop(event)">
+              {% for obj in pair.objects %}
+              <img src="{{ url_for('static', filename=obj.image.split('static/')[1]) }}" 
+                   id="{{ obj.id }}" class="object-img" draggable="true"
+                   ondragstart="drag(event, '{{ pair.id }}')">
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <div class="category-boxes">
+          <h3>Categories:</h3>
+          {% for cat in categories %}
+          <div class="category-box" id="{{ pair.id }}-{{ cat|replace(' ', '_') }}" ondrop="drop(event, '{{ pair.id }}')" ondragover="allowDrop(event)">
+            <div class="category-header"><strong>{{ cat }}</strong></div>
+            <div class="category-content"></div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+      <!-- Extra input grid (no output) -->
+      <div class="grid-pair" id="{{ extra_pair.id }}">
+        <div class="pair-images">
+          <div class="grid-images">
+            <div class="grid-image">
+              <h3>Input Grid (Extra)</h3>
+              <img src="{{ url_for('static', filename=extra_pair.input_image.split('static/')[1]) }}" alt="Extra Input Grid">
+            </div>
+          </div>
+          <div class="pair-objects">
+            <h3>Objects:</h3>
+            <div id="{{ extra_pair.id }}-object-list" class="object-list" ondrop="dropToObjects(event, '{{ extra_pair.id }}')" ondragover="allowDrop(event)">
+              {% for obj in extra_pair.objects %}
+              <img src="{{ url_for('static', filename=obj.image.split('static/')[1]) }}" 
+                   id="{{ obj.id }}" class="object-img" draggable="true"
+                   ondragstart="drag(event, '{{ extra_pair.id }}')">
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <div class="category-boxes">
+          <h3>Categories:</h3>
+          {% for cat in categories %}
+          <div class="category-box" id="{{ extra_pair.id }}-{{ cat|replace(' ', '_') }}" ondrop="drop(event, '{{ extra_pair.id }}')" ondragover="allowDrop(event)">
+            <div class="category-header"><strong>{{ cat }}</strong></div>
+            <div class="category-content"></div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </form>
+  
+  <script>
+    window.addEventListener('load', function() {
+      // Scale images collectively so that the largest image is no wider than 40vw.
+      // Gather all grid and object images.
+      var allImages = document.querySelectorAll('.grid-image img, .object-img');
+      var maxWidth = 0;
+      allImages.forEach(function(img) {
+        var nw = img.naturalWidth;
+        if (nw > maxWidth) {
+          maxWidth = nw;
+        }
+      });
+      // Allowed maximum is 40vw in pixels.
+      var allowed = window.innerWidth * 0.2;
+      var scaleFactor = (maxWidth > allowed) ? (allowed / maxWidth) : 1;
+      allImages.forEach(function(img) {
+        img.style.width = (img.naturalWidth * scaleFactor) + "px";
+        img.style.height = "auto";
+      });
+    });
+    
+    var assignments = {};
+
+    function allowDrop(ev) {
+      ev.preventDefault();
+    }
+
+    function drag(ev, pairId) {
+      var imgElement = ev.target;
+      if (imgElement.tagName.toLowerCase() !== "img") {
+        imgElement = ev.target.querySelector("img");
+      }
+      ev.dataTransfer.setData("text", imgElement.id);
+      ev.dataTransfer.setData("pairId", pairId);
+      // ev.dataTransfer.setDragImage(imgElement, imgElement.offsetWidth / 4, imgElement.offsetHeight / 4);
+      var crt = u=imgElement.cloneNode(true);
+      crt.style.width = 50 + "px";
+      document.body.appendChild(crt);
+      ev.dataTransfer.setDragImage(crt, 0, 0);
+    }
+
+    function drop(ev, pairId) {
+      ev.preventDefault();
+      var objId = ev.dataTransfer.getData("text");
+      var sourcePairId = ev.dataTransfer.getData("pairId");
+      if (pairId !== sourcePairId) {
+        alert("Cannot drop object in a different pair's category.");
+        return;
+      }
+      var dropTarget = ev.target;
+      while (!dropTarget.classList.contains("category-box")) {
+        dropTarget = dropTarget.parentNode;
+      }
+      var contentContainer = dropTarget.querySelector('.category-content');
+      contentContainer.appendChild(document.getElementById(objId));
+      
+      if (!assignments[pairId]) {
+        assignments[pairId] = {};
+      }
+      var catName = dropTarget.id.split(pairId + "-")[1];
+      for (let existingCat in assignments[pairId]) {
+        let index = assignments[pairId][existingCat].indexOf(objId);
+        if (index !== -1) {
+          assignments[pairId][existingCat].splice(index, 1);
+        }
+      }
+      if (!assignments[pairId][catName]) {
+        assignments[pairId][catName] = [];
+      }
+      assignments[pairId][catName].push(objId);
+    }
+
+    function dropToObjects(ev, pairId) {
+      ev.preventDefault();
+      var objId = ev.dataTransfer.getData("text");
+      var sourcePairId = ev.dataTransfer.getData("pairId");
+      if (pairId !== sourcePairId) {
+        alert("Cannot drop object in a different pair's object list.");
+        return;
+      }
+      if (assignments[pairId]) {
+        for (let cat in assignments[pairId]) {
+          let index = assignments[pairId][cat].indexOf(objId);
+          if (index !== -1) {
+            assignments[pairId][cat].splice(index, 1);
+          }
+        }
+      }
+      var objectListContainer = document.getElementById(pairId + "-object-list");
+      objectListContainer.appendChild(document.getElementById(objId));
+    }
+
+    function submitCategorization() {
+      var filename = document.getElementById("selectedFilename").value;
+      var payload = {
+        filename: filename,
+        assignments: assignments
+      };
+      console.log("Submitting payload:", payload);
+      fetch("/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      }).then(response => response.json())
+        .then(data => {
+          alert("Categorization submitted successfully!");
+        })
+        .catch(error => {
+          console.error("Error submitting categorization:", error);
+        });
+    }
+  </script>
+</body>
+</html>
